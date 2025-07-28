@@ -1,0 +1,31 @@
+# Build outputs
+build/
+*.elf
+*.uf2
+*.hex
+*.bin
+*.map
+*.dis
+
+# Pico SDK (if cloned locally)
+pico-sdk/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test outputs
+test-output.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

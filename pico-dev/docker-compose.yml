@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Build service - compiles the Pico firmware
+  pico-build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pico-dev:latest
+    container_name: pico-build
+    volumes:
+      - ./:/workspace/pico-dev
+      - pico-sdk:/workspace/pico-sdk
+    command: bash -c "cd build && cmake .. && make -j$$(nproc)"
+
+  # Test service - runs firmware in QEMU
+  pico-test:
+    image: murr2k/qemu-rp2040:latest
+    container_name: pico-test
+    depends_on:
+      - pico-build
+    volumes:
+      - ./build:/firmware:ro
+    command: >
+      bash -c "
+        echo '=== Running Pico firmware in QEMU ===' &&
+        timeout 15 qemu-system-arm 
+          -machine raspberrypi-pico 
+          -kernel /firmware/examples/blinky/blinky.elf 
+          -serial stdio 
+          -monitor none 
+          -nographic
+      "
+
+  # Development service - interactive shell
+  pico-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pico-dev:latest
+    container_name: pico-dev
+    volumes:
+      - ./:/workspace/pico-dev
+      - pico-sdk:/workspace/pico-sdk
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  # Combined build and test
+  pico-ci:
+    image: pico-dev:latest
+    container_name: pico-ci
+    volumes:
+      - ./:/workspace/pico-dev
+      - pico-sdk:/workspace/pico-sdk
+    command: >
+      bash -c "
+        echo '=== Building Pico firmware ===' &&
+        cd build &&
+        cmake .. &&
+        make -j$$(nproc) &&
+        echo '=== Build complete ===' &&
+        echo 'Firmware location: build/examples/blinky/blinky.elf'
+      "
+
+volumes:
+  pico-sdk:
+    name: pico-sdk-cache

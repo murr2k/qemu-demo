@@ -1,0 +1,177 @@
+name: Build and Test Pico Firmware
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'pico-dev/**'
+      - '.github/workflows/build-and-test.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'pico-dev/**'
+      - '.github/workflows/build-and-test.yml'
+
+jobs:
+  build-firmware:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Cache Pico SDK
+      uses: actions/cache@v3
+      with:
+        path: ~/pico-sdk
+        key: ${{ runner.os }}-pico-sdk-1.5.1
+        
+    - name: Install ARM toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          gcc-arm-none-eabi \
+          libnewlib-arm-none-eabi \
+          libstdc++-arm-none-eabi-newlib \
+          build-essential
+          
+    - name: Clone Pico SDK
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        git clone --depth 1 --branch 1.5.1 https://github.com/raspberrypi/pico-sdk.git ~/pico-sdk
+        cd ~/pico-sdk
+        git submodule update --init
+        
+    - name: Build firmware
+      env:
+        PICO_SDK_PATH: ~/pico-sdk
+      run: |
+        cd pico-dev
+        mkdir -p build
+        cd build
+        cmake ..
+        make -j$(nproc)
+        
+    - name: Upload firmware artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: pico-firmware
+        path: |
+          pico-dev/build/examples/blinky/blinky.elf
+          pico-dev/build/examples/blinky/blinky.uf2
+          pico-dev/build/examples/blinky/blinky.hex
+          
+  test-in-qemu:
+    needs: build-firmware
+    runs-on: ubuntu-latest
+    container:
+      image: murr2k/qemu-rp2040:latest
+      
+    steps:
+    - name: Download firmware
+      uses: actions/download-artifact@v3
+      with:
+        name: pico-firmware
+        path: firmware
+        
+    - name: List firmware files
+      run: ls -la firmware/
+      
+    - name: Test blinky in QEMU
+      run: |
+        echo "=== Running Blinky Test in QEMU ==="
+        timeout 15 qemu-system-arm \
+          -machine raspberrypi-pico \
+          -kernel firmware/blinky.elf \
+          -serial stdio \
+          -monitor none \
+          -nographic | tee test-output.log
+          
+    - name: Verify test output
+      run: |
+        echo "=== Verifying Test Output ==="
+        
+        # Check for expected output patterns
+        if grep -q "Raspberry Pi Pico Blinky Test" test-output.log; then
+          echo "✓ Test header found"
+        else
+          echo "✗ Test header not found"
+          exit 1
+        fi
+        
+        if grep -q "LED ON" test-output.log; then
+          echo "✓ LED ON messages found"
+        else
+          echo "✗ LED ON messages not found"
+          exit 1
+        fi
+        
+        if grep -q "LED OFF" test-output.log; then
+          echo "✓ LED OFF messages found"
+        else
+          echo "✗ LED OFF messages not found"
+          exit 1
+        fi
+        
+        if grep -q "Status: PASS" test-output.log; then
+          echo "✓ Test passed successfully"
+        else
+          echo "✗ Test did not complete successfully"
+          exit 1
+        fi
+        
+        echo "=== All Tests Passed! ==="
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results
+        path: test-output.log
+        
+  analyze-firmware:
+    needs: build-firmware
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Download firmware
+      uses: actions/download-artifact@v3
+      with:
+        name: pico-firmware
+        path: firmware
+        
+    - name: Install analysis tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          binutils-arm-none-eabi \
+          
+    - name: Analyze firmware size
+      run: |
+        echo "=== Firmware Size Analysis ==="
+        arm-none-eabi-size firmware/blinky.elf
+        
+        echo -e "\n=== Detailed Section Sizes ==="
+        arm-none-eabi-size -A firmware/blinky.elf
+        
+    - name: Generate disassembly
+      run: |
+        arm-none-eabi-objdump -d firmware/blinky.elf > firmware-disassembly.txt
+        echo "=== First 100 lines of disassembly ==="
+        head -n 100 firmware-disassembly.txt
+        
+    - name: Check for common issues
+      run: |
+        echo "=== Checking for common issues ==="
+        
+        # Check if binary is not too large
+        SIZE=$(stat -c%s firmware/blinky.uf2)
+        if [ $SIZE -gt 2097152 ]; then
+          echo "⚠️  Warning: Binary size ($SIZE) exceeds 2MB flash"
+        else
+          echo "✓ Binary size ($SIZE) within limits"
+        fi

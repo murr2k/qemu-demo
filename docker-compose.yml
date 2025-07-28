@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  qemu-rp2040:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: murr2k/qemu-rp2040:latest
+    container_name: qemu-rp2040
+    
+    # Mount local directory for easy file access
+    volumes:
+      - ./workspace:/workspace
+      - ./tests:/workspace/tests:ro
+      
+    # Network mode for serial console
+    network_mode: host
+    
+    # Required for ptrace (GDB debugging)
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+      
+    # Keep container running
+    stdin_open: true
+    tty: true
+    
+    # Default command runs UART test
+    command: >
+      bash -c "cd /workspace/tests/rp2040 && 
+               make test_uart.elf &&
+               qemu-system-arm -machine raspberrypi-pico 
+               -kernel test_uart.elf 
+               -serial stdio 
+               -monitor none"
+
+  # Development container with shell access
+  qemu-rp2040-dev:
+    extends: qemu-rp2040
+    command: /bin/bash
+    
+  # GDB debugging container
+  qemu-rp2040-debug:
+    extends: qemu-rp2040
+    ports:
+      - "1234:1234"  # GDB server port
+    command: >
+      bash -c "cd /workspace/tests/rp2040 && 
+               make test_gpio.elf &&
+               qemu-system-arm -machine raspberrypi-pico 
+               -kernel test_gpio.elf 
+               -serial stdio 
+               -s -S"
+
+  # VNC display container (future enhancement)
+  qemu-rp2040-vnc:
+    extends: qemu-rp2040
+    ports:
+      - "5900:5900"  # VNC port
+    environment:
+      - DISPLAY=:0
+    command: >
+      qemu-system-arm -machine raspberrypi-pico 
+      -serial stdio 
+      -vnc :0

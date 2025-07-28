@@ -1,0 +1,13 @@
+config RP2040
+    bool
+    select ARM_V7M
+    select RP2040_UART
+    select RP2040_GPIO  
+    select RP2040_TIMER
+    select UNIMP
+
+config RASPBERRYPI_PICO
+    bool
+    default y
+    depends on TCG && ARM
+    select RP2040

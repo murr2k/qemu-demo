@@ -1,0 +1,10 @@
+# RP2040 peripheral configuration
+
+config RP2040_UART
+    bool
+
+config RP2040_GPIO
+    bool
+
+config RP2040_TIMER
+    bool

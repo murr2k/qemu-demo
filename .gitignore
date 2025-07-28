@@ -1,0 +1,34 @@
+# Build artifacts
+*.o
+*.d
+*.elf
+*.bin
+*.lst
+*.map
+
+# Editor files
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build directories
+build/
+debug/
+release/
+
+# Test artifacts
+tests/rp2040/*.elf
+tests/rp2040/*.bin
+tests/rp2040/*.lst
+tests/rp2040/startup.s
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Hive Mind
+.hive-mind/
